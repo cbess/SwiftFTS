@@ -7,7 +7,10 @@ let package = Package(
     name: "SwiftFTS",
     platforms: [
         .iOS(.v16),
-        .macOS(.v13)
+        .macOS(.v13),
+        .macCatalyst(.v16),
+        .tvOS(.v16),
+        .visionOS(.v2)
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.

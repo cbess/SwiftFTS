@@ -1,6 +1,6 @@
 # SwiftFTS
 
-SwiftFTS is a Swift wrapper around SQLite FTS5 for fast and simple full-text search on iOS/macOS. Built with Swift Concurrency, it provides a modern async/await API for indexing and searching your content with powerful SQLite FTS5 features.
+SwiftFTS is a Swift wrapper around SQLite FTS5 for fast and simple full-text search on iOS/macOS.
 
 ## Features
 
@@ -24,7 +24,7 @@ Add the following to your `Package.swift` dependencies:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/cbess/SwiftFTS.git", from: "0.5.0")
+    .package(url: "https://github.com/cbess/SwiftFTS.git", revision: "<commit id>")
 ]
 ```
 
@@ -471,10 +471,12 @@ await dbQueue.close()
 
 ## Requirements
 
-- iOS 13.0+
+- iOS 16.0+
+- tvOS 16.0+
 - macOS 13.0+
 - Swift 5.9+
 - Xcode 15.0+
+
 ## Testing
 
 SwiftFTS includes comprehensive tests with 100% code coverage. Run tests with:
