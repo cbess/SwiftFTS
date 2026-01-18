@@ -223,4 +223,153 @@ struct SwiftFTSTests {
         
         await dbQueue.close()
     }
+    
+    @Test("Remove Single Item")
+    func testRemoveItem() async throws {
+        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        let engine = SearchEngine(databaseQueue: dbQueue)
+        
+        // Add multiple documents
+        let doc1 = TestDocument(id: "doc1", text: "First document about Swift", metadata: TestMetadata(author: "Chris", year: 2023))
+        let doc2 = TestDocument(id: "doc2", text: "Second document about Swift", metadata: TestMetadata(author: "Caleb", year: 2024))
+        let doc3 = TestDocument(id: "doc3", text: "Third document about Python", metadata: TestMetadata(author: "Josiah", year: 2025))
+        
+        try await indexer.addItems([doc1, doc2, doc3])
+        
+        // Verify all documents are indexed
+        let initialCount = try await indexer.count()
+        #expect(initialCount == 3)
+        
+        // Search to confirm all Swift docs exist
+        let swiftResults: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: "Swift")
+        #expect(swiftResults.count == 2)
+        
+        // Remove a single item
+        try await indexer.removeItem(id: "doc1")
+        
+        // Verify count decreased by 1
+        let afterRemovalCount = try await indexer.count()
+        #expect(afterRemovalCount == 2)
+        
+        // Verify the removed item is no longer searchable
+        let afterRemovalResults: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: "Swift")
+        #expect(afterRemovalResults.count == 1)
+        #expect(afterRemovalResults.first?.indexItemID == "doc2")
+        
+        // Verify other documents are still present
+        let pythonResults: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: "Python")
+        #expect(pythonResults.count == 1)
+        #expect(pythonResults.first?.indexItemID == "doc3")
+        
+        // Remove non-existent item (should not throw)
+        try await indexer.removeItem(id: "nonexistent")
+        let finalCount = try await indexer.count()
+        #expect(finalCount == 2)
+        
+        await dbQueue.close()
+    }
+    
+    @Test("Remove Multiple Items")
+    func testRemoveItems() async throws {
+        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        let engine = SearchEngine(databaseQueue: dbQueue)
+        
+        // Add multiple documents
+        var docs: [TestDocument] = []
+        for idx in 1...10 {
+            docs.append(TestDocument(id: "doc\(idx)", text: "Document \(idx) with searchable content", type: FTSItemType(idx % 3)))
+        }
+        try await indexer.addItems(docs)
+        
+        // Verify all documents are indexed
+        let initialCount = try await indexer.count()
+        #expect(initialCount == 10)
+        
+        // Remove multiple items (3 documents)
+        try await indexer.removeItems(ids: ["doc1", "doc3", "doc5"])
+        
+        // Verify count decreased by 3
+        let afterRemovalCount = try await indexer.count()
+        #expect(afterRemovalCount == 7)
+        
+        // Verify removed items are no longer searchable
+        let allResults: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: "Document")
+        #expect(allResults.count == 7)
+        
+        let removedIds = Set(["doc1", "doc3", "doc5"])
+        for result in allResults {
+            #expect(!removedIds.contains(result.indexItemID))
+        }
+        
+        // Verify remaining documents are correct
+        let remainingIds = allResults.map { $0.indexItemID }
+        #expect(remainingIds.contains("doc2"))
+        #expect(remainingIds.contains("doc4"))
+        #expect(remainingIds.contains("doc6"))
+        #expect(remainingIds.contains("doc7"))
+        #expect(remainingIds.contains("doc8"))
+        #expect(remainingIds.contains("doc9"))
+        #expect(remainingIds.contains("doc10"))
+        
+        // Test removing with empty array (should not throw)
+        try await indexer.removeItems(ids: [])
+        let countAfterEmpty = try await indexer.count()
+        #expect(countAfterEmpty == 7)
+        
+        // Test removing with mix of existing and non-existing IDs
+        try await indexer.removeItems(ids: ["doc2", "nonexistent", "doc4"])
+        let finalCount = try await indexer.count()
+        #expect(finalCount == 5)
+        
+        await dbQueue.close()
+    }
+    
+    @Test("Remove Items in Large Batches")
+    func testRemoveItemsLargeBatch() async throws {
+        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        let engine = SearchEngine(databaseQueue: dbQueue)
+        let maxDocsToIndex = 2000
+        
+        // Add 2000 documents (more than SQLInBatchSize of 900)
+        var docs: [TestDocument] = []
+        for idx in 1...maxDocsToIndex {
+            docs.append(TestDocument(id: "doc\(idx)", text: "Batch test document \(idx)"))
+        }
+        try await indexer.addItems(docs)
+        
+        // Verify all documents are indexed
+        let initialCount = try await indexer.count()
+        #expect(initialCount == maxDocsToIndex)
+        
+        // Remove 1500 items (requires multiple batches)
+        var idsToRemove: [String] = []
+        for idx in 1...1500 {
+            idsToRemove.append("doc\(idx)")
+        }
+        try await indexer.removeItems(ids: idsToRemove)
+        
+        // Verify correct count after removal
+        let afterRemovalCount = try await indexer.count()
+        #expect(afterRemovalCount == 500)
+        
+        // Verify removed items are gone
+        let results: [any FullTextSearchable<TestMetadata?>] = try await engine.search(query: "Batch", limit: maxDocsToIndex)
+        #expect(results.count == 500)
+        
+        // Verify remaining IDs are correct (doc1501 through doc2000)
+        let remainingIds = Set(results.map { $0.indexItemID })
+        for idx in 1501...maxDocsToIndex {
+            #expect(remainingIds.contains("doc\(idx)"))
+        }
+        
+        // Verify removed IDs are not present
+        for idx in 1...1500 {
+            #expect(!remainingIds.contains("doc\(idx)"))
+        }
+        
+        await dbQueue.close()
+    }
 }

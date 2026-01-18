@@ -14,7 +14,7 @@ public final class SearchEngine: @unchecked Sendable {
     ///   - query: The search query.
     ///   - itemType: Optional document type to filter by.
     ///   - offset: Pagination offset.
-    ///   - limit: Pagination limit.
+    ///   - limit: Pagination limit. Defaults to 100.
     /// - Returns: An array of items matching the query.
     public func search<M: Codable & Sendable>(query: String, itemType: FTSItemType? = nil, offset: Int = 0, limit: Int = 100) async throws -> [any FullTextSearchable<M>] {
         // "Query validation ... via FTS5QueryBuilder" implies we call validation.

@@ -1,6 +1,8 @@
 import Foundation
 import SQLite3
 
+private let SQLInBatchSize = 900
+
 public final class SearchIndexer: @unchecked Sendable {
     private let databaseQueue: FTSDatabaseQueue
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -17,18 +19,18 @@ public final class SearchIndexer: @unchecked Sendable {
         guard !items.isEmpty else { return }
         
         let transient = self.SQLITE_TRANSIENT
-        
-        try await databaseQueue.execute { db in
-            try self.performTransaction(db: db) {
-                // use UPSERT (ON CONFLICT DO UPDATE) to handle updates
-                // this fires the UPDATE trigger, preserving the rowid and correctly updating the FTS index
-                let sql = """
+        // use UPSERT (ON CONFLICT DO UPDATE) to handle updates
+        // this fires the UPDATE trigger, preserving the rowid and correctly updating the FTS index
+        let sql = """
                 INSERT INTO fts_lookup (id, content, type, metadata) VALUES (?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     content=excluded.content,
                     type=excluded.type,
                     metadata=excluded.metadata;
                 """
+        
+        try await databaseQueue.execute { db in
+            try self.performTransaction(db: db) {
                 var stmt: OpaquePointer?
                 
                 if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
@@ -59,7 +61,7 @@ public final class SearchIndexer: @unchecked Sendable {
                     }
                     
                     if sqlite3_step(stmt) != SQLITE_DONE {
-                        throw SearchError.indexingFailed("Failed to insert document: \(id)")
+                        throw SearchError.indexerFailed("Failed to insert document: \(id)")
                     }
                     
                     sqlite3_reset(stmt)
@@ -78,20 +80,59 @@ public final class SearchIndexer: @unchecked Sendable {
     /// Removes the item with the specified id.
     public func removeItem(id: String) async throws {
         let transient = self.SQLITE_TRANSIENT
+        
         try await databaseQueue.execute { db in
-            // delete from lookup table; a trigger handles the FTS index
-            let sql = "DELETE FROM fts_lookup WHERE id = ?;"
-            var stmt: OpaquePointer?
-            
-            if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
-                throw SearchError.databaseError("Failed to prepare delete statement")
+            try self.performTransaction(db: db) {
+                let sql = "DELETE FROM fts_lookup WHERE id = ?;"
+                var stmt: OpaquePointer?
+                
+                if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
+                    throw SearchError.databaseError("Failed to prepare delete statement")
+                }
+                defer { sqlite3_finalize(stmt) }
+                
+                sqlite3_bind_text(stmt, 1, (id as NSString).utf8String, -1, transient)
+                
+                if sqlite3_step(stmt) != SQLITE_DONE {
+                    throw SearchError.indexerFailed("Failed to delete document: \(id)")
+                }
             }
-            defer { sqlite3_finalize(stmt) }
+        }
+    }
+    
+    /// Removes multiple items with the specified ids.
+    public func removeItems(ids: [String]) async throws {
+        guard !ids.isEmpty else { return }
+        
+        let transient = self.SQLITE_TRANSIENT
+        
+        // Process in batches to stay within SQLite parameter limits
+        for batchStartIndex in stride(from: 0, to: ids.count, by: SQLInBatchSize) {
+            let batchEndIndex = min(batchStartIndex + SQLInBatchSize, ids.count)
+            let batch = Array(ids[batchStartIndex..<batchEndIndex])
             
-            sqlite3_bind_text(stmt, 1, (id as NSString).utf8String, -1, transient)
-            
-            if sqlite3_step(stmt) != SQLITE_DONE {
-                throw SearchError.indexingFailed("Failed to delete document: \(id)")
+            try await databaseQueue.execute { db in
+                try self.performTransaction(db: db) {
+                    // delete from lookup table; a trigger handles the FTS index
+                    // Build placeholders for IN clause: (?, ?, ?)
+                    let placeholders = batch.map { _ in "?" }.joined(separator: ", ")
+                    let sql = "DELETE FROM fts_lookup WHERE id IN (\(placeholders));"
+                    var stmt: OpaquePointer?
+                    
+                    if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
+                        throw SearchError.databaseError("Failed to prepare delete statement")
+                    }
+                    defer { sqlite3_finalize(stmt) }
+                    
+                    // Bind all the IDs in this batch
+                    for (index, id) in batch.enumerated() {
+                        sqlite3_bind_text(stmt, Int32(index + 1), (id as NSString).utf8String, -1, transient)
+                    }
+                    
+                    if sqlite3_step(stmt) != SQLITE_DONE {
+                        throw SearchError.indexerFailed("Failed to delete documents in batch range: (\(batchStartIndex)..<\(batchEndIndex))")
+                    }
+                }
             }
         }
     }
@@ -179,6 +220,18 @@ public extension SearchIndexer {
         Task {
             do {
                 try await removeItem(id: id)
+                DispatchQueue.main.async { completion(nil) }
+            } catch {
+                DispatchQueue.main.async { completion(error) }
+            }
+        }
+    }
+    
+    @available(*, deprecated, message: "Use async/await variant instead")
+    func removeItems(ids: [String], completion: @escaping @Sendable (Error?) -> Void) {
+        Task {
+            do {
+                try await removeItems(ids: ids)
                 DispatchQueue.main.async { completion(nil) }
             } catch {
                 DispatchQueue.main.async { completion(error) }

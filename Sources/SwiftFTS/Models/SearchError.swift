@@ -2,7 +2,7 @@ import Foundation
 
 public enum SearchError: Error, LocalizedError {
     case databaseError(String)
-    case indexingFailed(String)
+    case indexerFailed(String)
     case searchFailed(String)
     case invalidQuery(String)
     case metadataEncodingFailed(Error)
@@ -13,7 +13,7 @@ public enum SearchError: Error, LocalizedError {
         switch self {
         case .databaseError(let message): 
             return "Database error: \(message)"
-        case .indexingFailed(let message): 
+        case .indexerFailed(let message): 
             return "Indexing failed: \(message)"
         case .searchFailed(let message): 
             return "Search failed: \(message)"
