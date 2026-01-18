@@ -1,9 +1,9 @@
 import Foundation
 
 /// A type alias for the item type identifier.
-public typealias FTSItemType = Int
+public typealias FTSItemType = Int32
 
-/// The default unspecified FTS item type
+/// The default unspecified FTS item type.
 public let FTSItemTypeUnspecified: FTSItemType = -1
 
 /// A type representing an item that can be indexed and searched.
@@ -16,7 +16,7 @@ public protocol FullTextSearchable<Metadata>: Sendable {
     /// The text content to be indexed for full-text search.
     var indexText: String { get }
     
-    /// The type or category of the document.
+    /// The type or category of the item.
     var indexItemType: FTSItemType { get }
     
     /// Additional metadata associated with the item.

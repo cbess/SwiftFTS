@@ -1,5 +1,6 @@
 import Foundation
 
+/// Represents the FTS query builder helper operations.
 public struct FTSQueryBuilder {
     /// Builds a phrase query (exact match for the sequence of words).
     public static func phraseQuery(_ phrase: String) -> String {

@@ -4,9 +4,10 @@ import SQLite3
 /// The in-memory db path name.
 public let InMemoryDatabasePathName: String = ":memory:"
 
-/// The default FTS database Sqlite3 open flags, for r/w and create operations.
+/// The default FTS database Sqlite open flags, for read, write and create operations.
 public let FTSDBDefaultOpenFlags: Int32 = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
 
+/// Represents the FTS database queue which handles all raw db operations.
 public class FTSDatabaseQueue: @unchecked Sendable {
     public static let inMemoryPath: String = InMemoryDatabasePathName
     private let queue = DispatchQueue(label: "com.swiftfts.database", qos: .userInitiated)
@@ -23,7 +24,7 @@ public class FTSDatabaseQueue: @unchecked Sendable {
         return try await FTSDatabaseQueue(path: path, flags: SQLITE_OPEN_READONLY)
     }
     
-    /// Initializes a db queue and opens the db for r/w and create operations.
+    /// Initializes a db queue and opens the db for read, write and create operations.
     public convenience init(path: String) async throws {
         try await self.init(path: path, flags: SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)
     }
@@ -72,7 +73,7 @@ public class FTSDatabaseQueue: @unchecked Sendable {
         }
     }
     
-    /// Provides the execution block for database operations, passing it the sqlite3 db pointer.
+    /// Provides the execution block for database operations, passing it the sqlite db pointer.
     public func execute<T: Sendable>(_ block: @escaping @Sendable (OpaquePointer) throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             queue.async {

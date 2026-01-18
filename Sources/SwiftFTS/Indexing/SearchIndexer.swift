@@ -3,6 +3,7 @@ import SQLite3
 
 private let SQLInBatchSize = 900
 
+/// Represents the indexer for the FTS.
 public final class SearchIndexer: @unchecked Sendable {
     private let databaseQueue: FTSDatabaseQueue
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -101,6 +102,7 @@ public final class SearchIndexer: @unchecked Sendable {
     }
     
     /// Removes multiple items with the specified ids.
+    /// - Discussion: Internally batches items to avoid potential deletion limits.
     public func removeItems(ids: [String]) async throws {
         guard !ids.isEmpty else { return }
         
@@ -158,15 +160,26 @@ public final class SearchIndexer: @unchecked Sendable {
     }
     
     /// Returns the total count of items in the FTS index.
-    public func count() async throws -> Int {
+    /// - Parameter type: Optional filter to count only items of a specific type.
+    public func count(type: FTSItemType? = nil) async throws -> Int {
         try await databaseQueue.execute { db in
-             let sql = "SELECT COUNT(*) FROM \(FTS5Setup.tableName);"
+             let sql: String
+             if type != nil {
+                 sql = "SELECT COUNT(*) FROM fts_lookup WHERE type = ?;"
+             } else {
+                 sql = "SELECT COUNT(*) FROM fts_lookup;"
+             }
+             
              var stmt: OpaquePointer?
              
              if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
                  throw SearchError.databaseError("Failed to prepare count statement")
              }
              defer { sqlite3_finalize(stmt) }
+             
+             if let type {
+                 sqlite3_bind_int(stmt, 1, Int32(type))
+             }
              
              if sqlite3_step(stmt) == SQLITE_ROW {
                  return Int(sqlite3_column_int(stmt, 0))

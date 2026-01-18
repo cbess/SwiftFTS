@@ -1,5 +1,6 @@
 import Foundation
 
+/// FTS errors
 public enum SearchError: Error, LocalizedError {
     case databaseError(String)
     case indexerFailed(String)

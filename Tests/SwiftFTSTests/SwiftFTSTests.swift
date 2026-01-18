@@ -209,21 +209,32 @@ struct SwiftFTSTests {
         let count0 = try await indexer.count()
         #expect(count0 == 0)
         
-        let doc1 = TestDocument(id: "1", text: "One")
-        let doc2 = TestDocument(id: "2", text: "Two")
+        let doc1 = TestDocument(id: "1", text: "One", type: 1)
+        let doc2 = TestDocument(id: "2", text: "Two", type: 2)
+        let doc3 = TestDocument(id: "one", text: "One", type: 1)
+        let doc4 = TestDocument(id: "two", text: "Two", type: 2)
         
         // add docs
-        try await indexer.addItems([doc1, doc2])
+        try await indexer.addItems([doc1, doc2, doc3, doc4])
         
         // count after addition
-        let count2 = try await indexer.count()
-        #expect(count2 == 2)
+        let countAll = try await indexer.count()
+        #expect(countAll == 4)
         
-        try await indexer.removeItem(id: "1")
+        // count by type
+        let countType1 = try await indexer.count(type: 1)
+        #expect(countType1 == 2)
+        
+        // remove type 2 doc
+        try await indexer.removeItem(id: "2")
         
         // count after removal
-        let count1 = try await indexer.count()
-        #expect(count1 == 1)
+        let countAgain = try await indexer.count()
+        #expect(countAgain == 3)
+        
+        // count type 2 after removal
+        let countType2 = try await indexer.count(type: 2)
+        #expect(countType2 == 1)
         
         await dbQueue.close()
     }

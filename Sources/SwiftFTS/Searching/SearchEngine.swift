@@ -1,6 +1,7 @@
 import Foundation
 import SQLite3
 
+/// Represents the FTS search engine.
 public final class SearchEngine: @unchecked Sendable {
     private let databaseQueue: FTSDatabaseQueue
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -28,7 +29,6 @@ public final class SearchEngine: @unchecked Sendable {
     ///   - itemType: Optional document type to filter by.
     ///   - offset: Pagination offset.
     ///   - limit: Pagination limit. Defaults to 100.
-    ///   - metadataType: The type of metadata stored with the items. Use `EmptyMetadata.self` if no metadata is stored.
     ///   - factory: A closure that creates a custom search result from the `FTSFactoryItem`.
     /// - Returns: An array of items matching the query.
     public func search<R: Sendable>(
@@ -85,7 +85,7 @@ public final class SearchEngine: @unchecked Sendable {
             while sqlite3_step(stmt) == SQLITE_ROW {
                 let idPtr = sqlite3_column_text(stmt, 0)
                 let contentPtr = sqlite3_column_text(stmt, 1)
-                let typeVal = sqlite3_column_int(stmt, 2)
+                let itemType = sqlite3_column_int(stmt, 2)
                 let metadataPtr = sqlite3_column_text(stmt, 3)
                 
                 guard let idPtr, let contentPtr else {
@@ -94,7 +94,6 @@ public final class SearchEngine: @unchecked Sendable {
                 
                 let id = String(cString: idPtr)
                 let content = String(cString: contentPtr)
-                let itemType = Int(typeVal)
                 var metadataStr: String? = nil
                 
                 // metadata is optional
