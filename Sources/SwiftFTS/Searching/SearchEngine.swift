@@ -16,12 +16,27 @@ public final class SearchEngine: @unchecked Sendable {
     ///   - offset: Pagination offset.
     ///   - limit: Pagination limit. Defaults to 100.
     /// - Returns: An array of items matching the query.
-    public func search<M: Codable & Sendable>(query: String, itemType: FTSItemType? = nil, offset: Int = 0, limit: Int = 100) async throws -> [any FullTextSearchable<M>] {
-        // "Query validation ... via FTS5QueryBuilder" implies we call validation.
-        if !FTS5QueryBuilder.validateQuery(query) {
-             // But validation just checks not empty.
+    public func search<M: Codable & Sendable>(query: String, itemType: FTSItemType? = nil, offset: Int = 0, limit: Int = 100) async throws -> [FTSItem<M>] {
+        try await search(query: query, itemType: itemType, offset: offset, limit: limit) { $0 }
+    }
+    
+    /// Searches the index with a custom factory to create result objects.
+    /// - Parameters:
+    ///   - query: The search query. Defaults to AND query. Use `FTSQueryBuilder` for other query types.
+    ///   - itemType: Optional document type to filter by.
+    ///   - offset: Pagination offset.
+    ///   - limit: Pagination limit. Defaults to 100.
+    ///   - factory: A closure that creates a custom `FullTextSearchable` object from the search result components.
+    /// - Returns: An array of items matching the query.
+    public func search<M: Codable & Sendable, T: FullTextSearchable>(
+        query: String,
+        itemType: FTSItemType? = nil,
+        offset: Int = 0,
+        limit: Int = 100,
+        factory: @escaping @Sendable (FTSItem<M>) throws -> T
+    ) async throws -> [T] where T.Metadata == M {
+        guard FTSQueryBuilder.isValid(query) else {
              return []
-             // If query is empty, FTS match might match nothing or everything depending on query.
         }
         
         let transient = self.SQLITE_TRANSIENT
@@ -46,13 +61,13 @@ public final class SearchEngine: @unchecked Sendable {
             defer { sqlite3_finalize(stmt) }
             
             // Bind query
-            // So we should expect the user to use QueryBuilder if they want complex queries, OR we blindly escape if we treat input as raw text.
-
+            // we should expect the user to use QueryBuilder if they want complex queries,
             // the user is responsible for building a valid FTS5 query string using FTS5QueryBuilder for terms.
             
             sqlite3_bind_text(stmt, 1, (query as NSString).utf8String, -1, transient)
             
             var argIndex: Int32 = 2
+            // filter by item type, if present
             if let itemType {
                  sqlite3_bind_int(stmt, argIndex, Int32(itemType))
                  argIndex += 1
@@ -62,7 +77,7 @@ public final class SearchEngine: @unchecked Sendable {
             argIndex += 1
             sqlite3_bind_int(stmt, argIndex, Int32(offset))
             
-            var results: [FTSItem<M>] = []
+            var results: [T] = []
             
             while sqlite3_step(stmt) == SQLITE_ROW {
                 let idPtr = sqlite3_column_text(stmt, 0)
@@ -79,6 +94,7 @@ public final class SearchEngine: @unchecked Sendable {
                 let itemType = Int(typeVal)
                 var metadata: M? = nil
                 
+                // metadata is optional
                 if let metadataPtr {
                     do {
                         metadata = try MetadataDecoder.decode(M.self, from: String(cString: metadataPtr))
@@ -87,8 +103,9 @@ public final class SearchEngine: @unchecked Sendable {
                     }
                 }
                 
-                let doc = FTSItem(id: id, text: content, itemType: itemType, metadata: metadata)
-                results.append(doc)
+                // pass info to the factory handler
+                let item = try factory(FTSItem(id: id, text: content, itemType: itemType, metadata: metadata))
+                results.append(item)
             }
             
             return results

@@ -52,7 +52,7 @@ struct SwiftFTSTests {
         
         let doc1 = TestDocument(id: "1", text: "Swift is a powerful programming language.", type: FTSItemTypeUnspecified, metadata: TestMetadata(author: "Apple", year: 2014))
         let doc2 = TestDocument(id: "2", text: "Objective-C was the primary language for iOS.", type: 1, metadata: TestMetadata(author: "NeXT", year: 1984))
-        let doc3 = TestDocument(id: "3", text: "Python is great for data science.", type: 2, metadata: nil)
+        let doc3 = TestDocument(id: "3", text: "Python is great for data science.", type: 2)
         
         try await indexer.addItems([doc1, doc2, doc3])
         
@@ -62,8 +62,8 @@ struct SwiftFTSTests {
         #expect(results1.first?.indexItemID == "1")
         #expect(results1.first?.indexMetadata?.author == "Apple")
         
-        // Search for "language" (should match 1 and 2)
-        let results2: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: "language")
+        // Search for two different terms using OR (should match 1 and 3)
+        let results2: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: FTSQueryBuilder.orQuery("python", "swift"))
         #expect(results2.count == 2)
         
         // Search for "language" with type filter 1
@@ -78,6 +78,10 @@ struct SwiftFTSTests {
         let results5: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: "data", itemType: 2)
         #expect(results5.count == 1)
         #expect(results5.first?.indexItemID == "3")
+        
+        // search for "data science"
+        let results6: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: FTSQueryBuilder.andQuery("great", "data"))
+        #expect(results6.count == 1)
         
         await dbQueue.close()
     }
@@ -369,6 +373,165 @@ struct SwiftFTSTests {
         for idx in 1...1500 {
             #expect(!remainingIds.contains("doc\(idx)"))
         }
+        
+        await dbQueue.close()
+    }
+    
+    @Test("Search with Factory Block")
+    func testSearchWithFactory() async throws {
+        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        let engine = SearchEngine(databaseQueue: dbQueue)
+        
+        // Add test documents
+        let doc1 = TestDocument(id: "1", text: "Swift programming language", type: 1, metadata: TestMetadata(author: "Apple", year: 2014))
+        let doc2 = TestDocument(id: "2", text: "Objective-C runtime", type: 2, metadata: TestMetadata(author: "NeXT", year: 1988))
+        let doc3 = TestDocument(id: "3", text: "Swift concurrency features", type: 1, metadata: TestMetadata(author: "Community", year: 2021))
+        
+        try await indexer.addItems([doc1, doc2, doc3])
+        
+        // Test 1: Use factory to convert FTSItem back to TestDocument
+        let results1: [TestDocument] = try await engine.search(query: "Swift", factory: { ftsItem in
+            TestDocument(
+                id: ftsItem.indexItemID,
+                text: ftsItem.indexText,
+                type: ftsItem.indexItemType,
+                metadata: ftsItem.indexMetadata
+            )
+        })
+        
+        #expect(results1.count == 2)
+        #expect(results1[0].id == "1")
+        #expect(results1[0].metadata?.author == "Apple")
+        #expect(results1[1].id == "3")
+        #expect(results1[1].metadata?.year == 2021)
+        
+        // Test 2: Use factory to transform data (e.g., uppercase text)
+        struct TransformedDocument: FullTextSearchable {
+            let indexItemID: String
+            let indexText: String
+            let indexItemType: FTSItemType
+            let indexMetadata: TestMetadata?
+            let uppercasedText: String
+        }
+        
+        let results2: [TransformedDocument] = try await engine.search(query: "language", factory: { ftsItem in
+            TransformedDocument(
+                indexItemID: ftsItem.indexItemID,
+                indexText: ftsItem.indexText,
+                indexItemType: ftsItem.indexItemType,
+                indexMetadata: ftsItem.indexMetadata,
+                uppercasedText: ftsItem.indexText.uppercased()
+            )
+        })
+        
+        #expect(results2.count == 1)
+        #expect(results2[0].uppercasedText == "SWIFT PROGRAMMING LANGUAGE")
+        
+        // Test 3: Use factory to filter/modify property values based on metadata
+        struct EnrichedDocument: FullTextSearchable {
+            let indexItemID: String
+            let indexText: String
+            let indexItemType: FTSItemType
+            let indexMetadata: TestMetadata?
+            let isVintage: Bool
+        }
+        
+        let results3: [EnrichedDocument] = try await engine.search(query: FTSQueryBuilder.orQuery("Swift", "Objective-C"), factory: { ftsItem in
+            EnrichedDocument(
+                indexItemID: ftsItem.indexItemID,
+                indexText: ftsItem.indexText,
+                indexItemType: ftsItem.indexItemType,
+                indexMetadata: ftsItem.indexMetadata,
+                isVintage: (ftsItem.indexMetadata?.year ?? 0) < 2000
+            )
+        })
+        
+        #expect(results3.count == 3)
+        
+        // Find the Objective-C document
+        let objcDoc = results3.first { $0.indexItemID == "2" }
+        #expect(objcDoc != nil)
+        #expect(objcDoc?.isVintage == true)
+        
+        // Swift documents should not be vintage
+        let swiftDoc = results3.first { $0.indexItemID == "1" }
+        #expect(swiftDoc?.isVintage == false)
+        
+        // Test 4: Factory with type filter
+        let results4: [TestDocument] = try await engine.search(query: "Swift", itemType: 1, factory: { ftsItem in
+            TestDocument(
+                id: ftsItem.indexItemID,
+                text: ftsItem.indexText,
+                type: ftsItem.indexItemType,
+                metadata: ftsItem.indexMetadata
+            )
+        })
+        
+        #expect(results4.count == 2)
+        #expect(results4.allSatisfy { $0.type == 1 })
+        
+        // Test 5: Factory with pagination
+        let results5: [TestDocument] = try await engine.search(
+            query: "Swift",
+            offset: 0,
+            limit: 1,
+            factory: { ftsItem in
+                TestDocument(
+                    id: ftsItem.indexItemID,
+                    text: ftsItem.indexText,
+                    type: ftsItem.indexItemType,
+                    metadata: ftsItem.indexMetadata
+                )
+            }
+        )
+        
+        #expect(results5.count == 1)
+        #expect(results5[0].id == "1")
+        
+        await dbQueue.close()
+    }
+    
+    @Test("Search Factory with Nil Metadata")
+    func testSearchFactoryWithNilMetadata() async throws {
+        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        let engine = SearchEngine(databaseQueue: dbQueue)
+        
+        // Add documents with and without metadata
+        let docWithMetadata = TestDocument(id: "1", text: "Has metadata", metadata: TestMetadata(author: "Someone", year: 2024))
+        let docWithoutMetadata = TestDocument(id: "2", text: "No metadata")
+        
+        try await indexer.addItems([docWithMetadata, docWithoutMetadata])
+        
+        // Search and use factory to handle both cases
+        struct MetadataCheckDocument: FullTextSearchable {
+            let indexItemID: String
+            let indexText: String
+            let indexItemType: FTSItemType
+            let indexMetadata: TestMetadata?
+            let hasAuthor: Bool
+        }
+        
+        let results: [MetadataCheckDocument] = try await engine.search(query: "metadata", factory: { ftsItem in
+            MetadataCheckDocument(
+                indexItemID: ftsItem.indexItemID,
+                indexText: ftsItem.indexText,
+                indexItemType: ftsItem.indexItemType,
+                indexMetadata: ftsItem.indexMetadata,
+                hasAuthor: ftsItem.indexMetadata?.author != nil
+            )
+        })
+        
+        #expect(results.count == 2)
+        
+        let doc1 = results.first { $0.indexItemID == "1" }
+        #expect(doc1?.hasAuthor == true)
+        #expect(doc1?.indexMetadata?.author == "Someone")
+        
+        let doc2 = results.first { $0.indexItemID == "2" }
+        #expect(doc2?.hasAuthor == false)
+        #expect(doc2?.indexMetadata == nil)
         
         await dbQueue.close()
     }
