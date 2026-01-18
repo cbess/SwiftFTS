@@ -17,7 +17,9 @@ public final class SearchEngine: @unchecked Sendable {
     ///   - limit: Pagination limit. Defaults to 100.
     /// - Returns: An array of items matching the query.
     public func search<M: Codable & Sendable>(query: String, itemType: FTSItemType? = nil, offset: Int = 0, limit: Int = 100) async throws -> [FTSItem<M>] {
-        try await search(query: query, itemType: itemType, offset: offset, limit: limit) { $0 }
+        try await search(query: query, itemType: itemType, offset: offset, limit: limit) { item in
+            FTSItem(id: item.id, text: item.text, itemType: item.type, metadata: try item.metadata())
+        }
     }
     
     /// Searches the index with a custom factory to create result objects.
@@ -26,15 +28,16 @@ public final class SearchEngine: @unchecked Sendable {
     ///   - itemType: Optional document type to filter by.
     ///   - offset: Pagination offset.
     ///   - limit: Pagination limit. Defaults to 100.
-    ///   - factory: A closure that creates a custom `FullTextSearchable` object from the search result components.
+    ///   - metadataType: The type of metadata stored with the items. Use `EmptyMetadata.self` if no metadata is stored.
+    ///   - factory: A closure that creates a custom search result from the `FTSFactoryItem`.
     /// - Returns: An array of items matching the query.
-    public func search<M: Codable & Sendable, T: FullTextSearchable>(
+    public func search<R: Sendable>(
         query: String,
         itemType: FTSItemType? = nil,
         offset: Int = 0,
         limit: Int = 100,
-        factory: @escaping @Sendable (FTSItem<M>) throws -> T
-    ) async throws -> [T] where T.Metadata == M {
+        factory: @escaping @Sendable (FTSFactoryItem) throws -> R
+    ) async throws -> [R] {
         guard FTSQueryBuilder.isValid(query) else {
              return []
         }
@@ -77,7 +80,7 @@ public final class SearchEngine: @unchecked Sendable {
             argIndex += 1
             sqlite3_bind_int(stmt, argIndex, Int32(offset))
             
-            var results: [T] = []
+            var results: [R] = []
             
             while sqlite3_step(stmt) == SQLITE_ROW {
                 let idPtr = sqlite3_column_text(stmt, 0)
@@ -92,19 +95,15 @@ public final class SearchEngine: @unchecked Sendable {
                 let id = String(cString: idPtr)
                 let content = String(cString: contentPtr)
                 let itemType = Int(typeVal)
-                var metadata: M? = nil
+                var metadataStr: String? = nil
                 
                 // metadata is optional
                 if let metadataPtr {
-                    do {
-                        metadata = try MetadataDecoder.decode(M.self, from: String(cString: metadataPtr))
-                    } catch {
-                        throw SearchError.metadataDecodingFailed(error)
-                    }
+                    metadataStr = String(cString: metadataPtr)
                 }
                 
                 // pass info to the factory handler
-                let item = try factory(FTSItem(id: id, text: content, itemType: itemType, metadata: metadata))
+                let item = try factory(FTSFactoryItem(id: id, text: content, type: itemType, metadata: metadataStr))
                 results.append(item)
             }
             
@@ -128,3 +127,4 @@ public extension SearchEngine {
         }
     }
 }
+

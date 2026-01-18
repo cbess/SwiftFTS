@@ -393,10 +393,10 @@ struct SwiftFTSTests {
         // Test 1: Use factory to convert FTSItem back to TestDocument
         let results1: [TestDocument] = try await engine.search(query: "Swift", factory: { ftsItem in
             TestDocument(
-                id: ftsItem.indexItemID,
-                text: ftsItem.indexText,
-                type: ftsItem.indexItemType,
-                metadata: ftsItem.indexMetadata
+                id: ftsItem.id,
+                text: ftsItem.text,
+                type: ftsItem.type,
+                metadata: try ftsItem.metadata()
             )
         })
         
@@ -417,11 +417,11 @@ struct SwiftFTSTests {
         
         let results2: [TransformedDocument] = try await engine.search(query: "language", factory: { ftsItem in
             TransformedDocument(
-                indexItemID: ftsItem.indexItemID,
-                indexText: ftsItem.indexText,
-                indexItemType: ftsItem.indexItemType,
-                indexMetadata: ftsItem.indexMetadata,
-                uppercasedText: ftsItem.indexText.uppercased()
+                indexItemID: ftsItem.id,
+                indexText: ftsItem.text,
+                indexItemType: ftsItem.type,
+                indexMetadata: try ftsItem.metadata(),
+                uppercasedText: ftsItem.text.uppercased()
             )
         })
         
@@ -438,12 +438,13 @@ struct SwiftFTSTests {
         }
         
         let results3: [EnrichedDocument] = try await engine.search(query: FTSQueryBuilder.orQuery("Swift", "Objective-C"), factory: { ftsItem in
-            EnrichedDocument(
-                indexItemID: ftsItem.indexItemID,
-                indexText: ftsItem.indexText,
-                indexItemType: ftsItem.indexItemType,
-                indexMetadata: ftsItem.indexMetadata,
-                isVintage: (ftsItem.indexMetadata?.year ?? 0) < 2000
+            let metadata: TestMetadata? = try ftsItem.metadata()
+            return EnrichedDocument(
+                indexItemID: ftsItem.id,
+                indexText: ftsItem.text,
+                indexItemType: ftsItem.type,
+                indexMetadata: metadata,
+                isVintage: (metadata?.year ?? 0) < 2000
             )
         })
         
@@ -461,10 +462,10 @@ struct SwiftFTSTests {
         // Test 4: Factory with type filter
         let results4: [TestDocument] = try await engine.search(query: "Swift", itemType: 1, factory: { ftsItem in
             TestDocument(
-                id: ftsItem.indexItemID,
-                text: ftsItem.indexText,
-                type: ftsItem.indexItemType,
-                metadata: ftsItem.indexMetadata
+                id: ftsItem.id,
+                text: ftsItem.text,
+                type: ftsItem.type,
+                metadata: try ftsItem.metadata()
             )
         })
         
@@ -478,10 +479,10 @@ struct SwiftFTSTests {
             limit: 1,
             factory: { ftsItem in
                 TestDocument(
-                    id: ftsItem.indexItemID,
-                    text: ftsItem.indexText,
-                    type: ftsItem.indexItemType,
-                    metadata: ftsItem.indexMetadata
+                    id: ftsItem.id,
+                    text: ftsItem.text,
+                    type: ftsItem.type,
+                    metadata: try ftsItem.metadata()
                 )
             }
         )
@@ -505,33 +506,32 @@ struct SwiftFTSTests {
         try await indexer.addItems([docWithMetadata, docWithoutMetadata])
         
         // Search and use factory to handle both cases
-        struct MetadataCheckDocument: FullTextSearchable {
-            let indexItemID: String
+        struct MetadataCheckDocument {
+            let identifier: String
             let indexText: String
-            let indexItemType: FTSItemType
-            let indexMetadata: TestMetadata?
             let hasAuthor: Bool
+            let author: String?
         }
         
-        let results: [MetadataCheckDocument] = try await engine.search(query: "metadata", factory: { ftsItem in
-            MetadataCheckDocument(
-                indexItemID: ftsItem.indexItemID,
-                indexText: ftsItem.indexText,
-                indexItemType: ftsItem.indexItemType,
-                indexMetadata: ftsItem.indexMetadata,
-                hasAuthor: ftsItem.indexMetadata?.author != nil
+        let results: [MetadataCheckDocument] = try await engine.search(query: "metadata", factory: { item in
+            let metadata: TestMetadata? = try item.metadata()
+            return MetadataCheckDocument(
+                identifier: item.id,
+                indexText: item.text,
+                hasAuthor: metadata?.author != nil,
+                author: metadata?.author
             )
         })
         
         #expect(results.count == 2)
         
-        let doc1 = results.first { $0.indexItemID == "1" }
+        let doc1 = results.first { $0.identifier == "1" }
         #expect(doc1?.hasAuthor == true)
-        #expect(doc1?.indexMetadata?.author == "Someone")
+        #expect(doc1?.author == "Someone")
         
-        let doc2 = results.first { $0.indexItemID == "2" }
+        let doc2 = results.first { $0.identifier == "2" }
         #expect(doc2?.hasAuthor == false)
-        #expect(doc2?.indexMetadata == nil)
+        #expect(doc2?.author == nil)
         
         await dbQueue.close()
     }

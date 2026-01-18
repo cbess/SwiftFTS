@@ -1,6 +1,6 @@
 import Foundation
 
-/// A concrete implementation of `FullTextSearchable` for generic usage.
+/// A convenient concrete implementation of `FullTextSearchable` for generic usage.
 public struct FTSItem<Metadata: Codable & Sendable>: FullTextSearchable {
     public let indexItemID: String
     public let indexText: String
