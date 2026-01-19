@@ -546,4 +546,118 @@ struct SwiftFTSTests {
         
         await dbQueue.close()
     }
+    
+    @Test("Indexer Error Messages Include SQLite Details")
+    func testIndexerErrorMessages() async throws {
+        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        
+        // Test: Corrupt the database schema by dropping the lookup table
+        // This will cause insert operations to fail with SQLite errors
+        try await dbQueue.execute(sql: "DROP TABLE fts_lookup;")
+        
+        do {
+            let doc = TestDocument(id: "1", text: "Test document")
+            try await indexer.addItems([doc])
+            Issue.record("Expected an error when adding items to corrupted database")
+        } catch let error as SearchError {
+            let errorDescription = "\(error)"
+            // Verify the error message includes SQLite error details
+            #expect(errorDescription.contains("Failed to prepare insert statement"))
+            // Should include SQLite-specific error about missing table
+            #expect(errorDescription.contains("no such table") || errorDescription.contains("fts_lookup"))
+        } catch {
+            Issue.record("Expected SearchError but got: \(error)")
+        }
+        
+        await dbQueue.close()
+    }
+    
+    @Test("Delete Error Messages Include SQLite Details")
+    func testDeleteErrorMessages() async throws {
+        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        
+        // Add some documents first
+        let docs = [
+            TestDocument(id: "1", text: "First"),
+            TestDocument(id: "2", text: "Second"),
+            TestDocument(id: "3", text: "Third")
+        ]
+        try await indexer.addItems(docs)
+        
+        // Drop the table to cause delete errors
+        try await dbQueue.execute(sql: "DROP TABLE fts_lookup;")
+        
+        // Test single item removal
+        do {
+            try await indexer.removeItem(id: "1")
+            Issue.record("Expected an error when removing item from corrupted database")
+        } catch let error as SearchError {
+            let errorDescription = "\(error)"
+            #expect(errorDescription.contains("Failed to prepare delete statement"))
+            #expect(errorDescription.contains("no such table") || errorDescription.contains("fts_lookup"))
+        } catch {
+            Issue.record("Expected SearchError but got: \(error)")
+        }
+        
+        await dbQueue.close()
+    }
+    
+    @Test("Batch Delete Error Messages Include SQLite Details")
+    func testBatchDeleteErrorMessages() async throws {
+        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        
+        // Add documents
+        var docs: [TestDocument] = []
+        for idx in 1...10 {
+            docs.append(TestDocument(id: "doc\(idx)", text: "Document \(idx)"))
+        }
+        try await indexer.addItems(docs)
+        
+        // Drop the table to cause delete errors
+        try await dbQueue.execute(sql: "DROP TABLE fts_lookup;")
+        
+        // Test batch removal
+        do {
+            try await indexer.removeItems(ids: ["doc1", "doc2", "doc3"])
+            Issue.record("Expected an error when batch removing from corrupted database")
+        } catch let error as SearchError {
+            let errorDescription = "\(error)"
+            #expect(errorDescription.contains("Failed to prepare delete statement"))
+            #expect(errorDescription.contains("no such table") || errorDescription.contains("fts_lookup"))
+        } catch {
+            Issue.record("Expected SearchError but got: \(error)")
+        }
+        
+        await dbQueue.close()
+    }
+    
+    @Test("Count Error Messages Include SQLite Details")
+    func testCountErrorMessages() async throws {
+        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        
+        // Verify database works initially
+        let initialCount = try await indexer.count()
+        #expect(initialCount == 0)
+        
+        // Drop the table to cause count errors
+        try await dbQueue.execute(sql: "DROP TABLE fts_lookup;")
+        
+        // Try to count on a corrupted database
+        do {
+            _ = try await indexer.count()
+            Issue.record("Expected an error when counting on corrupted database")
+        } catch let error as SearchError {
+            let errorDescription = "\(error)"
+            #expect(errorDescription.contains("Failed to prepare count statement"))
+            #expect(errorDescription.contains("no such table") || errorDescription.contains("fts_lookup"))
+        } catch {
+            Issue.record("Expected SearchError but got: \(error)")
+        }
+        
+        await dbQueue.close()
+    }
 }

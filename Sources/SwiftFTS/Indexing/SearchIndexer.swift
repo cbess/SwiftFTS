@@ -35,7 +35,7 @@ public final class SearchIndexer: @unchecked Sendable {
                 var stmt: OpaquePointer?
                 
                 if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
-                    throw SearchError.databaseError("Failed to prepare insert statement")
+                    throw SearchError.databaseError("Failed to prepare insert statement: \(self.dbError(from: db))")
                 }
                 defer { sqlite3_finalize(stmt) }
                 
@@ -62,7 +62,7 @@ public final class SearchIndexer: @unchecked Sendable {
                     }
                     
                     if sqlite3_step(stmt) != SQLITE_DONE {
-                        throw SearchError.indexerFailed("Failed to insert document: \(id)")
+                        throw SearchError.indexerFailed("Failed to insert document: \(id) - \(self.dbError(from: db))")
                     }
                     
                     sqlite3_reset(stmt)
@@ -88,14 +88,14 @@ public final class SearchIndexer: @unchecked Sendable {
                 var stmt: OpaquePointer?
                 
                 if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
-                    throw SearchError.databaseError("Failed to prepare delete statement")
+                    throw SearchError.databaseError("Failed to prepare delete statement: \(self.dbError(from: db))")
                 }
                 defer { sqlite3_finalize(stmt) }
                 
                 sqlite3_bind_text(stmt, 1, (id as NSString).utf8String, -1, transient)
                 
                 if sqlite3_step(stmt) != SQLITE_DONE {
-                    throw SearchError.indexerFailed("Failed to delete document: \(id)")
+                    throw SearchError.indexerFailed("Failed to delete document: \(id) - \(self.dbError(from: db))")
                 }
             }
         }
@@ -122,7 +122,7 @@ public final class SearchIndexer: @unchecked Sendable {
                     var stmt: OpaquePointer?
                     
                     if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
-                        throw SearchError.databaseError("Failed to prepare delete statement")
+                        throw SearchError.databaseError("Failed to prepare delete statement - \(self.dbError(from: db))")
                     }
                     defer { sqlite3_finalize(stmt) }
                     
@@ -132,7 +132,7 @@ public final class SearchIndexer: @unchecked Sendable {
                     }
                     
                     if sqlite3_step(stmt) != SQLITE_DONE {
-                        throw SearchError.indexerFailed("Failed to delete documents in batch range: (\(batchStartIndex)..<\(batchEndIndex))")
+                        throw SearchError.indexerFailed("Failed to delete documents in batch range: (\(batchStartIndex)..<\(batchEndIndex)) - \(self.dbError(from: db))")
                     }
                 }
             }
@@ -144,7 +144,7 @@ public final class SearchIndexer: @unchecked Sendable {
         try await databaseQueue.execute { db in
             let sql = "INSERT INTO \(FTS5Setup.tableName)(\(FTS5Setup.tableName)) VALUES('rebuild');"
             if sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK {
-                 throw SearchError.databaseError("Failed to rebuild index")
+                 throw SearchError.databaseError("Failed to rebuild index: \(self.dbError(from: db))")
             }
         }
     }
@@ -154,7 +154,7 @@ public final class SearchIndexer: @unchecked Sendable {
         try await databaseQueue.execute { db in
              let sql = "INSERT INTO \(FTS5Setup.tableName)(\(FTS5Setup.tableName)) VALUES('optimize');"
              if sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK {
-                 throw SearchError.databaseError("Failed to optimize index")
+                 throw SearchError.databaseError("Failed to optimize index: \(self.dbError(from: db))")
              }
         }
     }
@@ -173,7 +173,7 @@ public final class SearchIndexer: @unchecked Sendable {
              var stmt: OpaquePointer?
              
              if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
-                 throw SearchError.databaseError("Failed to prepare count statement")
+                 throw SearchError.databaseError("Failed to prepare count statement: \(self.dbError(from: db))")
              }
              defer { sqlite3_finalize(stmt) }
              
@@ -198,6 +198,10 @@ public final class SearchIndexer: @unchecked Sendable {
             sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
             throw error
         }
+    }
+    
+    private func dbError(from db: OpaquePointer) -> String {
+        String(cString: sqlite3_errmsg(db))
     }
 }
 

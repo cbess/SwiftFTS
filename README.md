@@ -471,9 +471,16 @@ await dbQueue.close()
 
 ## Requirements
 
-- iOS 16.0+
-- tvOS 16.0+
-- macOS 13.0+
+```swift
+platforms: [
+    .iOS(.v16),
+    .macOS(.v13),
+    .macCatalyst(.v16),
+    .tvOS(.v16),
+    .visionOS(.v2)
+]
+```
+
 - Swift 5.9+
 - Xcode 15.0+
 
