@@ -26,7 +26,17 @@ struct TestDocument: FullTextSearchable {
     }
 }
 
-@Suite("SwiftFTS Tests")
+func makeFileDatabaseQueue() async throws -> FTSDatabaseQueue {
+    let dbPath = NSTemporaryDirectory().appending("SwiftFTS_test.sqlite")
+    // remove the file first
+    try? FileManager.default.removeItem(atPath: dbPath)
+    print("Creating database at \(dbPath)")
+    
+    let dbQueue = try await FTSDatabaseQueue(path: dbPath)
+    return dbQueue
+}
+
+@Suite("SwiftFTS Tests", .serialized)
 struct SwiftFTSTests {
     
     @Test("Simple Indexing")
@@ -42,11 +52,30 @@ struct SwiftFTSTests {
         let results: [any FullTextSearchable<TestMetadata?>] = try await engine.search(query: "woRld")
         #expect(results.count == 1)
         #expect(results.first?.indexItemType == 1)
+        
+        await dbQueue.close()
     }
     
-    @Test("Basic Indexing and Searching")
+    @Test("Simple Indexing - File")
+    func testSimpleDiskSearch() async throws {
+        let dbQueue = try await makeFileDatabaseQueue()
+        let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+        let engine = SearchEngine(databaseQueue: dbQueue)
+        
+        let doc = TestDocument(id: "1", text: "Hello, world!", type: 1, metadata: nil)
+        try await indexer.addItems([doc])
+        
+        // find it
+        let results: [any FullTextSearchable<TestMetadata?>] = try await engine.search(query: "woRld")
+        #expect(results.count == 1)
+        #expect(results.first?.indexItemType == 1)
+        
+        await dbQueue.close()
+    }
+    
+    @Test("Basic Indexing and Searching - File")
     func testIndexingAndSearching() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try await makeFileDatabaseQueue()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -285,9 +314,9 @@ struct SwiftFTSTests {
         await dbQueue.close()
     }
     
-    @Test("Remove Multiple Items")
+    @Test("Remove Multiple Items - File")
     func testRemoveItems() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try await makeFileDatabaseQueue()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         

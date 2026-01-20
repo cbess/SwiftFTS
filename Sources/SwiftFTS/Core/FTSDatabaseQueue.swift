@@ -24,11 +24,6 @@ public class FTSDatabaseQueue: @unchecked Sendable {
         return try await FTSDatabaseQueue(path: path, flags: SQLITE_OPEN_READONLY)
     }
     
-    /// Initializes a db queue and opens the db for read, write and create operations.
-    public convenience init(path: String) async throws {
-        try await self.init(path: path, flags: SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)
-    }
-    
     /// Initializes a db queue and opens the db.
     public init(path: String, flags: Int32 = FTSDBDefaultOpenFlags) async throws {
         self.path = path
