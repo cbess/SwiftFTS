@@ -26,13 +26,13 @@ struct TestDocument: FullTextSearchable {
     }
 }
 
-func makeFileDatabaseQueue() async throws -> FTSDatabaseQueue {
+func makeFileDatabaseQueue() throws -> FTSDatabaseQueue {
     let dbPath = NSTemporaryDirectory().appending("SwiftFTS_test.sqlite")
     // remove the file first
     try? FileManager.default.removeItem(atPath: dbPath)
     print("Creating database at \(dbPath)")
     
-    let dbQueue = try await FTSDatabaseQueue(path: dbPath)
+    let dbQueue = try FTSDatabaseQueue(path: dbPath)
     return dbQueue
 }
 
@@ -41,7 +41,7 @@ struct SwiftFTSTests {
     
     @Test("Simple Indexing")
     func testSimpleSearch() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -53,12 +53,12 @@ struct SwiftFTSTests {
         #expect(results.count == 1)
         #expect(results.first?.indexItemType == 1)
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Simple Indexing - File")
     func testSimpleDiskSearch() async throws {
-        let dbQueue = try await makeFileDatabaseQueue()
+        let dbQueue = try makeFileDatabaseQueue()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -70,12 +70,12 @@ struct SwiftFTSTests {
         #expect(results.count == 1)
         #expect(results.first?.indexItemType == 1)
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Basic Indexing and Searching - File")
     func testIndexingAndSearching() async throws {
-        let dbQueue = try await makeFileDatabaseQueue()
+        let dbQueue = try makeFileDatabaseQueue()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -112,12 +112,12 @@ struct SwiftFTSTests {
         let results6: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: FTSQueryBuilder.andQuery("great", "data"))
         #expect(results6.count == 1)
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Update and Remove")
     func testUpdateAndRemove() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -150,12 +150,12 @@ struct SwiftFTSTests {
         // test the optimize operation
         try await indexer.optimize()
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Pagination")
     func testPagination() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -177,12 +177,12 @@ struct SwiftFTSTests {
         let page4: [any FullTextSearchable<TestMetadata>] = try await engine.search(query: "item", offset: 9, limit: 3)
         #expect(page4.count == 1)
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Trigger Synchronization")
     func testTriggerSynchronization() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -226,12 +226,12 @@ struct SwiftFTSTests {
         #expect(results5.count == 1)
         #expect(results5.first!.indexMetadata == nil)
         
-        await dbQueue.close()
+        dbQueue.close()
     }
 
     @Test("Count")
     func testCount() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         
         // initial count
@@ -265,12 +265,12 @@ struct SwiftFTSTests {
         let countType2 = try await indexer.count(type: 2)
         #expect(countType2 == 1)
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Remove Single Item")
     func testRemoveItem() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -311,12 +311,12 @@ struct SwiftFTSTests {
         let finalCount = try await indexer.count()
         #expect(finalCount == 2)
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Remove Multiple Items - File")
     func testRemoveItems() async throws {
-        let dbQueue = try await makeFileDatabaseQueue()
+        let dbQueue = try makeFileDatabaseQueue()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -367,12 +367,12 @@ struct SwiftFTSTests {
         let finalCount = try await indexer.count()
         #expect(finalCount == 5)
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Remove Items in Large Batches")
     func testRemoveItemsLargeBatch() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         let maxDocsToIndex = 2000
@@ -414,12 +414,12 @@ struct SwiftFTSTests {
             #expect(!remainingIds.contains("doc\(idx)"))
         }
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Search with Factory Block")
     func testSearchWithFactory() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -530,12 +530,12 @@ struct SwiftFTSTests {
         #expect(results5.count == 1)
         #expect(results5[0].id == "1")
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Search Factory with Nil Metadata")
     func testSearchFactoryWithNilMetadata() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
@@ -573,12 +573,12 @@ struct SwiftFTSTests {
         #expect(doc2?.hasAuthor == false)
         #expect(doc2?.author == nil)
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Indexer Error Messages Include SQLite Details")
     func testIndexerErrorMessages() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         
         // Test: Corrupt the database schema by dropping the lookup table
@@ -599,12 +599,12 @@ struct SwiftFTSTests {
             Issue.record("Expected SearchError but got: \(error)")
         }
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Delete Error Messages Include SQLite Details")
     func testDeleteErrorMessages() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         
         // Add some documents first
@@ -630,12 +630,12 @@ struct SwiftFTSTests {
             Issue.record("Expected SearchError but got: \(error)")
         }
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Batch Delete Error Messages Include SQLite Details")
     func testBatchDeleteErrorMessages() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         
         // Add documents
@@ -660,12 +660,12 @@ struct SwiftFTSTests {
             Issue.record("Expected SearchError but got: \(error)")
         }
         
-        await dbQueue.close()
+        dbQueue.close()
     }
     
     @Test("Count Error Messages Include SQLite Details")
     func testCountErrorMessages() async throws {
-        let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try await SearchIndexer(databaseQueue: dbQueue)
         
         // Verify database works initially
@@ -687,6 +687,6 @@ struct SwiftFTSTests {
             Issue.record("Expected SearchError but got: \(error)")
         }
         
-        await dbQueue.close()
+        dbQueue.close()
     }
 }

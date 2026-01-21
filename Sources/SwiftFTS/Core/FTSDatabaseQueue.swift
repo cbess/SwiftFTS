@@ -15,56 +15,43 @@ public class FTSDatabaseQueue: @unchecked Sendable {
     private let path: String
     
     /// Returns a new in-memory database queue.
-    public class func makeInMemory() async throws -> FTSDatabaseQueue {
-        return try await FTSDatabaseQueue(path: inMemoryPath)
+    public class func makeInMemory() throws -> FTSDatabaseQueue {
+        return try FTSDatabaseQueue(path: inMemoryPath)
     }
     
     /// Returns a new readonly database queue.
-    public class func makeReadonly(path: String) async throws -> FTSDatabaseQueue {
-        return try await FTSDatabaseQueue(path: path, flags: SQLITE_OPEN_READONLY)
+    public class func makeReadonly(path: String) throws -> FTSDatabaseQueue {
+        return try FTSDatabaseQueue(path: path, flags: SQLITE_OPEN_READONLY)
     }
     
     /// Initializes a db queue and opens the db.
-    public init(path: String, flags: Int32 = FTSDBDefaultOpenFlags) async throws {
+    public init(path: String, flags: Int32 = FTSDBDefaultOpenFlags) throws {
         self.path = path
-        try await open(flags: flags)
+        try open(flags: flags)
     }
     
     deinit {
-        if db != nil {
-            sqlite3_close(db)
-        }
+        close()
     }
     
     /// Opens the database using the specified flags.
-    public func open(flags: Int32) async throws {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                if self.db != nil { 
-                    continuation.resume()
-                    return 
-                }
-                
-                if sqlite3_open_v2(self.path, &self.db, flags, nil) != SQLITE_OK {
-                    let errorMsg = String(cString: sqlite3_errmsg(self.db))
-                    continuation.resume(throwing: SearchError.databaseError("Failed to open database: \(errorMsg)"))
-                } else {
-                    continuation.resume()
-                }
-            }
+    public func open(flags: Int32) throws {
+        guard db == nil else {
+            return
+        }
+        
+        if sqlite3_open_v2(path, &db, flags, nil) != SQLITE_OK {
+            let errorMsg = String(cString: sqlite3_errmsg(db))
+            _ = sqlite3_close(db)
+            throw SearchError.databaseError("Failed to open database: \(errorMsg)")
         }
     }
     
     /// Closes the connection to the database, if needed.
-    public func close() async {
-        await withCheckedContinuation { continuation in
-            queue.async {
-                if let db = self.db {
-                    sqlite3_close(db)
-                    self.db = nil
-                }
-                continuation.resume()
-            }
+    public func close() {
+        if let db = db {
+            sqlite3_close(db)
+            self.db = nil
         }
     }
     
