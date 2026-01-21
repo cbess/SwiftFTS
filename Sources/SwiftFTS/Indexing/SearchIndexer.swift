@@ -201,7 +201,15 @@ public final class SearchIndexer: @unchecked Sendable {
     }
     
     private func dbError(from db: OpaquePointer) -> String {
-        String(cString: sqlite3_errmsg(db))
+        let errorCode = sqlite3_errcode(db)
+        let extendedErrorCode = sqlite3_extended_errcode(db)
+        let errorMessage = String(cString: sqlite3_errmsg(db))
+        
+        guard errorCode != extendedErrorCode else {
+            return "\(errorMessage) (code: \(errorCode))"
+        }
+        
+        return "\(errorMessage) (code: \(errorCode), extended: \(extendedErrorCode))"
     }
 }
 

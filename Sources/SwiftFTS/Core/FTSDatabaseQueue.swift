@@ -45,6 +45,11 @@ public class FTSDatabaseQueue: @unchecked Sendable {
             _ = sqlite3_close(db)
             throw SearchError.databaseError("Failed to open database: \(errorMsg)")
         }
+        
+        if let db = db {
+            // enable more detailed error information
+            sqlite3_extended_result_codes(db, 1)
+        }
     }
     
     /// Closes the connection to the database, if needed.
