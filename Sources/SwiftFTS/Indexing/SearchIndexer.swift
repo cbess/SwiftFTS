@@ -1,16 +1,16 @@
 import Foundation
 import SQLite3
 
-private let SQLInBatchSize = 900
+private let SQLInBatchSize = 950
 
 /// Represents the indexer for the FTS.
 public final class SearchIndexer: @unchecked Sendable {
     private let databaseQueue: FTSDatabaseQueue
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     
-    public init(databaseQueue: FTSDatabaseQueue) async throws {
+    public init(databaseQueue: FTSDatabaseQueue) throws {
         self.databaseQueue = databaseQueue
-        try await databaseQueue.execute { db in
+        if let db = databaseQueue.db {
             try FTS5Setup.setup(db: db)
         }
     }

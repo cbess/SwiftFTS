@@ -47,13 +47,13 @@ targets: [
 import SwiftFTS
 
 // Create an in-memory database
-let dbQueue = try await FTSDatabaseQueue.makeInMemory()
+let dbQueue = try FTSDatabaseQueue.makeInMemory()
 
 // Or create a file-based database
-// let dbQueue = try await FTSDatabaseQueue(path: "path/to/db.sqlite")
+// let dbQueue = try FTSDatabaseQueue(path: "path/to/db.sqlite")
 
 // Initialize indexer and search engine
-let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+let indexer = try SearchIndexer(databaseQueue: dbQueue)
 let engine = SearchEngine(databaseQueue: dbQueue)
 
 // Add documents
@@ -109,11 +109,11 @@ struct MyDocument: FullTextSearchable {
 
 ```swift
 // Create database queue (thread-safe)
-let dbQueue = try await FTSDatabaseQueue.makeInMemory()
-// Or: let dbQueue = try await FTSDatabaseQueue(path: "/path/to/database.sqlite")
+let dbQueue = try FTSDatabaseQueue.makeInMemory()
+// Or: let dbQueue = try FTSDatabaseQueue(path: "/path/to/database.sqlite")
 
 // Create indexer for adding/updating/removing documents
-let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+let indexer = try SearchIndexer(databaseQueue: dbQueue)
 
 // Create search engine for querying
 let engine = SearchEngine(databaseQueue: dbQueue)
@@ -383,7 +383,7 @@ try await indexer.removeItems(ids: idsToRemove)
 
 ```swift
 // Close the database when done
-await dbQueue.close()
+dbQueue.close()
 
 // Optimize after many deletions to reclaim space
 try await indexer.optimize()
@@ -417,8 +417,8 @@ struct BlogPost: FullTextSearchable {
 }
 
 // 2. Setup
-let dbQueue = try await FTSDatabaseQueue.makeInMemory()
-let indexer = try await SearchIndexer(databaseQueue: dbQueue)
+let dbQueue = try FTSDatabaseQueue.makeInMemory()
+let indexer = try SearchIndexer(databaseQueue: dbQueue)
 let engine = SearchEngine(databaseQueue: dbQueue)
 
 // 3. Index some posts
@@ -457,7 +457,7 @@ let results: [BlogPost] = try await engine.search(query: query, factory: { item 
 })
 
 // 6. Cleanup
-await dbQueue.close()
+dbQueue.close()
 ```
 
 ## Performance Tips

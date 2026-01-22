@@ -11,7 +11,7 @@ public let FTSDBDefaultOpenFlags: Int32 = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CR
 public class FTSDatabaseQueue: @unchecked Sendable {
     public static let inMemoryPath: String = InMemoryDatabasePathName
     private let queue = DispatchQueue(label: "com.swiftfts.database", qos: .userInitiated)
-    private var db: OpaquePointer?
+    internal private(set) var db: OpaquePointer?
     private let path: String
     
     /// Returns a new in-memory database queue.
