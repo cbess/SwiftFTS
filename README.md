@@ -10,7 +10,7 @@ SwiftFTS is a Swift wrapper around SQLite FTS5 for fast and simple full-text sea
 - 🔒 Thread-safe `FTSDatabaseQueue`
 - 🎯 Type-safe search results with generics
 - 🛠 Query builder for complex searches (AND, OR, phrases)
-- 📄 Pagination support
+- 📄 Pagination, custom ranking, and snippet support
 - 🔄 Update and remove operations
 - 🎨 Custom result transformation with factory closures
 - ✅ 100% test coverage
@@ -226,6 +226,33 @@ let page2: [any FullTextSearchable<Document.Metadata>] = try await engine.search
     offset: 10,
     limit: 10
 )
+```
+
+#### Search with Snippets
+
+Generate highlighted snippets showing the search term in context:
+
+```swift
+// Create snippet configuration
+let params = FTSSnippetParameters(
+    startMatch: "«",      // Marker before match
+    endMatch: "»",        // Marker after match
+    ellipsis: "…",        // Truncation indicator
+    tokenCount: 15        // Words of context around match
+)
+let engine = SearchEngine(databaseQueue: dbQueue, snippetParams: params)
+
+// Use custom results to get snippets
+struct SearchResult: Sendable {
+    let id: String
+    let snippet: String?
+}
+
+let results: [SearchResult] = try await engine.search(query: "programming") { ftsItem in
+    SearchResult(id: ftsItem.id, snippet: ftsItem.snippet)
+}
+
+// Example snippet output: "…Swift is a powerful «programming» language…"
 ```
 
 ### 5. Advanced Query Building

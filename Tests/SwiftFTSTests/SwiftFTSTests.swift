@@ -791,4 +791,34 @@ struct SwiftFTSTests {
         
         swiftFTS.close()
     }
+    
+    @Test("Snippet Search")
+    func testSnippetSearch() async throws {
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
+        let indexer = try SearchIndexer(databaseQueue: dbQueue)
+        
+        // provide snippet params
+        let params = FTSSnippetParameters(startMatch: "<b>", endMatch: "</b>", ellipsis: "...")
+        let engine = SearchEngine(databaseQueue: dbQueue, snippetParams: params)
+        
+        let text = "Swift is a general-purpose, multi-paradigm, compiled programming language developed by Apple Inc."
+        let doc = TestDocument(id: "1", text: text, type: 1)
+        try await indexer.addItems([doc])
+        
+        // use factory method to get snippet
+        struct Result: Sendable {
+            let id: String
+            let snippet: String?
+        }
+        
+        let results = try await engine.search(query: "compiled") { item in
+            Result(id: item.id, snippet: item.snippet)
+        }
+        
+        #expect(results.count == 1)
+        #expect(results.first?.id == "1")
+        #expect(results.first?.snippet?.contains("<b>compiled</b>") == true)
+        
+        dbQueue.close()
+    }
 }

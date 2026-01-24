@@ -12,12 +12,15 @@ public struct FTSFactoryItem: Sendable {
     public let type: FTSItemType
     /// The metadata JSON string.
     public let metadataString: String?
+    /// The snippet text with match highlighting.
+    public let snippet: String?
     
-    public init(id: String, text: String, type: FTSItemType = FTSItemTypeUnspecified, metadata: String? = nil) {
+    public init(id: String, text: String, type: FTSItemType = FTSItemTypeUnspecified, metadata: String? = nil, snippet: String? = nil) {
         self.id = id
         self.text = text
         self.type = type
         self.metadataString = metadata
+        self.snippet = snippet
     }
     
     /// Decodes the metadata JSON string into the expected object or nil.

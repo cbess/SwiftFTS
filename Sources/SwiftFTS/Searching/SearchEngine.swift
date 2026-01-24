@@ -3,11 +3,13 @@ import SQLite3
 
 /// Represents the FTS search engine.
 public final class SearchEngine: @unchecked Sendable {
-    private let databaseQueue: FTSDatabaseQueue
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    private let databaseQueue: FTSDatabaseQueue
+    public var snippetParameters: FTSSnippetParameters?
     
-    public init(databaseQueue: FTSDatabaseQueue) {
+    public init(databaseQueue: FTSDatabaseQueue, snippetParams: FTSSnippetParameters? = nil) {
         self.databaseQueue = databaseQueue
+        self.snippetParameters = snippetParams
     }
     
     /// Searches the index.
@@ -43,10 +45,17 @@ public final class SearchEngine: @unchecked Sendable {
         }
         
         let rankFunctionName = databaseQueue.rankFunctionName
+        let snippetParams = snippetParameters
         let transient = SQLITE_TRANSIENT
+        
         return try await databaseQueue.execute { db in
+            var selectSql = "SELECT l.id, l.content, l.type, l.metadata"
+            if snippetParams != nil {
+                selectSql += ", snippet(\(FTS5Setup.tableName), -1, ?, ?, ?, ?)"
+            }
+            
             var sql = """
-            SELECT l.id, l.content, l.type, l.metadata
+            \(selectSql)
             FROM fts_lookup l
             JOIN \(FTS5Setup.tableName) f ON l.rowid = f.rowid
             WHERE f.content MATCH ?
@@ -69,12 +78,21 @@ public final class SearchEngine: @unchecked Sendable {
             defer { sqlite3_finalize(stmt) }
             
             // Bind query
-            // we should expect the user to use QueryBuilder if they want complex queries,
-            // the user is responsible for building a valid FTS5 query string using FTS5QueryBuilder for terms.
+            var argIndex: Int32 = 1
+            if let snippetParams {
+                sqlite3_bind_text(stmt, argIndex, (snippetParams.startMatch as NSString).utf8String, -1, transient)
+                argIndex += 1
+                sqlite3_bind_text(stmt, argIndex, (snippetParams.endMatch as NSString).utf8String, -1, transient)
+                argIndex += 1
+                sqlite3_bind_text(stmt, argIndex, (snippetParams.ellipsis as NSString).utf8String, -1, transient)
+                argIndex += 1
+                sqlite3_bind_int(stmt, argIndex, Int32(snippetParams.tokenCount))
+                argIndex += 1
+            }
             
-            sqlite3_bind_text(stmt, 1, (query as NSString).utf8String, -1, transient)
+            sqlite3_bind_text(stmt, argIndex, (query as NSString).utf8String, -1, transient)
+            argIndex += 1
             
-            var argIndex: Int32 = 2
             // filter by item type, if present
             if let itemType {
                  sqlite3_bind_int(stmt, argIndex, Int32(itemType))
@@ -106,8 +124,14 @@ public final class SearchEngine: @unchecked Sendable {
                     metadataStr = String(cString: metadataPtr)
                 }
                 
+                // snippet is optional
+                var snippet: String?
+                if snippetParams != nil, let snippetPtr = sqlite3_column_text(stmt, 4) {
+                    snippet = String(cString: snippetPtr)
+                }
+                
                 // pass info to the factory handler
-                let item = try factory(FTSFactoryItem(id: id, text: content, type: itemType, metadata: metadataStr))
+                let item = try factory(FTSFactoryItem(id: id, text: content, type: itemType, metadata: metadataStr, snippet: snippet))
                 results.append(item)
             }
             
