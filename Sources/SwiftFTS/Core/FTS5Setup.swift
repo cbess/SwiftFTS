@@ -14,6 +14,7 @@ internal struct FTS5Setup {
             id TEXT NOT NULL UNIQUE,
             content TEXT,
             type INTEGER,
+            priority INTEGER DEFAULT 0,
             metadata TEXT
         );
         """
@@ -22,14 +23,16 @@ internal struct FTS5Setup {
         // 2. create indexes for fast lookup
         try exec(db, sql: "CREATE INDEX IF NOT EXISTS idx_fts_lookup_id ON fts_lookup(id);", errorMessage: "Failed to create id index")
         try exec(db, sql: "CREATE INDEX IF NOT EXISTS idx_fts_lookup_type ON fts_lookup(type);", errorMessage: "Failed to create type index")
+        try exec(db, sql: "CREATE INDEX IF NOT EXISTS idx_fts_lookup_priority ON fts_lookup(priority);", errorMessage: "Failed to create priority index")
 
         // 3. create fts5 virtual table connecting to external table
         let ftsSql = """
         CREATE VIRTUAL TABLE IF NOT EXISTS \(tableName) USING fts5(
-            id, 
+            id UNINDEXED, 
             content, 
             type UNINDEXED, 
-            metadata UNINDEXED, 
+            metadata UNINDEXED,
+            priority UNINDEXED,
             content='fts_lookup', 
             content_rowid='rowid', 
             tokenize='porter'
@@ -41,7 +44,7 @@ internal struct FTS5Setup {
         // trigger: after insert
         let triggerInsert = """
         CREATE TRIGGER IF NOT EXISTS fts_lookup_ai AFTER INSERT ON fts_lookup BEGIN
-            INSERT INTO \(tableName)(rowid, id, content, type, metadata) VALUES (new.rowid, new.id, new.content, new.type, new.metadata);
+            INSERT INTO \(tableName)(rowid, id, content, type, metadata, priority) VALUES (new.rowid, new.id, new.content, new.type, new.metadata, new.priority);
         END;
         """
         try exec(db, sql: triggerInsert, errorMessage: "Failed to create insert trigger")
@@ -49,7 +52,7 @@ internal struct FTS5Setup {
         // trigger: after delete
         let triggerDelete = """
         CREATE TRIGGER IF NOT EXISTS fts_lookup_ad AFTER DELETE ON fts_lookup BEGIN
-            INSERT INTO \(tableName)(\(tableName), rowid, id, content, type, metadata) VALUES('delete', old.rowid, old.id, old.content, old.type, old.metadata);
+            INSERT INTO \(tableName)(\(tableName), rowid, id, content, type, metadata, priority) VALUES('delete', old.rowid, old.id, old.content, old.type, old.metadata, old.priority);
         END;
         """
         try exec(db, sql: triggerDelete, errorMessage: "Failed to create delete trigger")
@@ -57,8 +60,8 @@ internal struct FTS5Setup {
         // trigger: after update
         let triggerUpdate = """
         CREATE TRIGGER IF NOT EXISTS fts_lookup_au AFTER UPDATE ON fts_lookup BEGIN
-            INSERT INTO \(tableName)(\(tableName), rowid, id, content, type, metadata) VALUES('delete', old.rowid, old.id, old.content, old.type, old.metadata);
-            INSERT INTO \(tableName)(rowid, id, content, type, metadata) VALUES (new.rowid, new.id, new.content, new.type, new.metadata);
+            INSERT INTO \(tableName)(\(tableName), rowid, id, content, type, metadata, priority) VALUES('delete', old.rowid, old.id, old.content, old.type, old.metadata, old.priority);
+            INSERT INTO \(tableName)(rowid, id, content, type, metadata, priority) VALUES (new.rowid, new.id, new.content, new.type, new.metadata, new.priority);
         END;
         """
         try exec(db, sql: triggerUpdate, errorMessage: "Failed to create update trigger")

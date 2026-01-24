@@ -23,11 +23,12 @@ public final class SearchIndexer: @unchecked Sendable {
         // use UPSERT (ON CONFLICT DO UPDATE) to handle updates
         // this fires the UPDATE trigger, preserving the rowid and correctly updating the FTS index
         let sql = """
-                INSERT INTO fts_lookup (id, content, type, metadata) VALUES (?, ?, ?, ?)
+                INSERT INTO fts_lookup (id, content, type, metadata, priority) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     content=excluded.content,
                     type=excluded.type,
-                    metadata=excluded.metadata;
+                    metadata=excluded.metadata,
+                    priority=excluded.priority;
                 """
         
         try await databaseQueue.execute { db in
@@ -60,6 +61,8 @@ public final class SearchIndexer: @unchecked Sendable {
                     } else {
                         sqlite3_bind_null(stmt, 4)
                     }
+
+                    sqlite3_bind_int(stmt, 5, Int32(item.indexPriority))
                     
                     if sqlite3_step(stmt) != SQLITE_DONE {
                         throw SearchError.indexerFailed("Failed to insert document: \(id) - \(self.dbError(from: db))")

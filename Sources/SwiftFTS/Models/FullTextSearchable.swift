@@ -1,11 +1,5 @@
 import Foundation
 
-/// A type alias for the item type identifier.
-public typealias FTSItemType = Int32
-
-/// The default unspecified FTS item type.
-public let FTSItemTypeUnspecified: FTSItemType = -1
-
 /// A type representing an item that can be indexed and searched.
 public protocol FullTextSearchable<Metadata>: Sendable {
     associatedtype Metadata: Codable & Sendable
@@ -21,6 +15,10 @@ public protocol FullTextSearchable<Metadata>: Sendable {
     
     /// Additional metadata associated with the item.
     var indexMetadata: Metadata? { get }
+
+    /// The priority of the index item. Defaults to 0.
+    /// > The lower the number the closer to the top it will appear in the results.
+    var indexPriority: Int { get }
     
     /// Indicates if the item can be indexed.
     var canIndex: Bool { get }
@@ -34,6 +32,9 @@ public protocol FullTextSearchable<Metadata>: Sendable {
 
 public extension FullTextSearchable {
     var canIndex: Bool { true }
+    var indexPriority: Int { FTSItemDefaultPriority }
+    var indexItemType: FTSItemType { FTSItemTypeUnspecified }
+    
     func willIndex() {}
     func didIndex() {}
 }

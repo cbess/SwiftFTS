@@ -7,12 +7,17 @@ public let InMemoryDatabasePathName: String = ":memory:"
 /// The default FTS database Sqlite open flags, for read, write and create operations.
 public let FTSDBDefaultOpenFlags: Int32 = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
 
+fileprivate let FTSCustomRankArgCount: Int32 = 3
+
 /// Represents the FTS database queue which handles all raw db operations.
 public class FTSDatabaseQueue: @unchecked Sendable {
     public static let inMemoryPath: String = InMemoryDatabasePathName
     private let queue = DispatchQueue(label: "com.swiftfts.database", qos: .userInitiated)
     internal private(set) var db: OpaquePointer?
     private let path: String
+    
+    /// The name of the custom rank function, if any.
+    public private(set) var rankFunctionName: String?
     
     /// Returns a new in-memory database queue.
     public class func makeInMemory() throws -> FTSDatabaseQueue {
@@ -58,6 +63,66 @@ public class FTSDatabaseQueue: @unchecked Sendable {
             sqlite3_close(db)
             self.db = nil
         }
+    }
+    
+    /// Registers the custom rank function used in search queries.
+    /// - Parameters:
+    ///   - name: The name of the function to use in SQL.
+    ///   - block: The custom rank function implementation.
+    ///     The closure receives:
+    ///     - `context`: OpaquePointer? - The SQLite context
+    ///     - `argc`: Int32 - Argument count (will always be 3)
+    ///     - `argv`: UnsafeMutablePointer<OpaquePointer?>? - Arguments array
+    ///       - `argv[0]`: bm25 doc score (DOUBLE) - The rank. Smaller number, better match.
+    ///       - `argv[1]`: priority (INTEGER) - FTS item priority.
+    ///       - `argv[2]`: type (INTEGER) - FTS item type.
+    public func registerRankFunction(name: String, block: @escaping @convention(c) (OpaquePointer?, Int32, UnsafeMutablePointer<OpaquePointer?>?) -> Void) throws {
+        guard let db = self.db else { return }
+        
+        // store func name
+        rankFunctionName = name
+        
+        let result = sqlite3_create_function(
+            db,
+            name,
+            // nArg (bm25|rank, priority, type)
+            FTSCustomRankArgCount,
+            SQLITE_UTF8,
+            nil,
+            block,
+            nil,
+            nil
+        )
+        
+        if result != SQLITE_OK {
+            let msg = String(cString: sqlite3_errmsg(db))
+            throw SearchError.databaseError("Failed to register custom rank function: \(msg)")
+        }
+    }
+    
+    /// Unregisters the custom rank function
+    public func unregisterRankFunction() throws {
+        guard rankFunctionName != nil, let db = self.db else {
+            return
+        }
+        
+        let result = sqlite3_create_function(
+            db,
+            rankFunctionName,
+            FTSCustomRankArgCount,
+            SQLITE_UTF8,
+            nil,
+            nil,
+            nil,
+            nil
+        )
+        
+        if result != SQLITE_OK {
+            let msg = String(cString: sqlite3_errmsg(db))
+            throw SearchError.databaseError("Failed to unregister custom rank function: \(msg)")
+        }
+        
+        rankFunctionName = nil
     }
     
     /// Provides the execution block for database operations, passing it the sqlite db pointer.

@@ -94,12 +94,16 @@ struct MyDocument: FullTextSearchable {
     let content: String
     let type: FTSItemType
     let metadata: Metadata?
+    let priority: Int
     
     // Conform to FullTextSearchable
     var indexItemID: String { id }
     var indexText: String { content }
-    var indexItemType: FTSItemType { type }
     var indexMetadata: Metadata? { metadata }
+    // optional
+    var indexItemType: FTSItemType { type }
+    // optional, used to change result sorting
+    var indexPriority: Int { priority }
 }
 ```
 
@@ -392,6 +396,58 @@ try await indexer.optimize()
 try await indexer.reindex()
 ```
 
+### Custom Rank Function
+
+You can register a custom rank function to fully customize how search results are sorted:
+
+```swift
+import SQLite3
+
+struct Article: FullTextSearchable {
+    let id: String
+    let text: String
+    let priority: Int  // Custom priority value
+    
+    var indexItemID: String { id }
+    var indexText: String { text }
+    var indexItemType: FTSItemType { FTSItemTypeUnspecified }
+    var indexMetadata: String? { nil }
+    var indexPriority: Int { priority }
+}
+
+// Create SwiftFTS instance
+let swiftFTS = try SwiftFTS.makeInMemory()
+
+// Define a custom rank function that prioritizes by the priority field
+// Lower scores appear first in results
+let customRank: @convention(c) (OpaquePointer?, Int32, UnsafeMutablePointer<OpaquePointer?>?) -> Void = { context, argc, argv in
+    guard let argv else { return }
+    
+    // Extract priority value (argv[1])
+    // argv[1] is always priority
+    let priority = sqlite3_value_int(argv[1])
+    // argv[2] is always the fts item type
+    let itemType = sqlite3_value_int(argv[2])
+    
+    // Return negative priority so higher priority values rank first
+    sqlite3_result_double(context, Double(-priority) - Double(itemType))
+}
+
+// Register the custom rank function
+try swiftFTS.registerRankFunction(name: "customRank", block: customRank)
+
+// Index articles with different priorities
+let article1 = Article(id: "1", text: "Swift programming tutorial", priority: 10)
+let article2 = Article(id: "2", text: "Swift best practices", priority: 50)
+let article3 = Article(id: "3", text: "Introduction to Swift", priority: 30)
+
+try await swiftFTS.indexer.addItems([article1, article2, article3])
+
+// Search - results will be ordered by custom rank function first
+let results: [any FullTextSearchable<String?>] = try await swiftFTS.searchEngine.search(query: "Swift")
+// article2 appears first (priority 50), then article3 (30), then article1 (10)
+```
+
 ## Complete Basic Example
 
 ```swift
@@ -412,7 +468,6 @@ struct BlogPost: FullTextSearchable {
     
     var indexItemID: String { id }
     var indexText: String { "\(title) \(body)" }
-    var indexItemType: FTSItemType { 1 }
     var indexMetadata: Meta { meta }
 }
 

@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SQLite3
 @testable import SwiftFTS
 
 struct TestMetadata: Codable, Equatable, Sendable {
@@ -688,5 +689,106 @@ struct SwiftFTSTests {
         }
         
         dbQueue.close()
+    }
+    
+    @Test("Priority Sort Ordering")
+    func testPrioritySorting() async throws {
+        let swiftFTS = try SwiftFTS.makeInMemory()
+        
+        struct PriorityDocument: FullTextSearchable {
+            let id: String
+            let text: String
+            let priority: Int
+            
+            var indexItemID: String { id }
+            var indexText: String { text }
+            var indexPriority: Int { priority }
+            var indexMetadata: TestMetadata? { nil }
+        }
+        
+        // Add items with different priorities, higher is closer to top results
+        // Use matching text so both are returned for the query
+        let doc1 = PriorityDocument(id: "docLow", text: "common text one", priority: 1)
+        let doc2 = PriorityDocument(id: "docMid", text: "common text two", priority: 2)
+        let doc3 = PriorityDocument(id: "docHigh", text: "common text three", priority: 3)
+        
+        try await swiftFTS.indexer.addItems([doc1, doc2, doc3])
+        
+        // We use a simple factory just to get IDs
+        let results: [String] = try await swiftFTS.searchEngine.search(query: "common", factory: { $0.id })
+        
+        #expect(results.count == 3)
+        #expect(results[0] == "docHigh")
+        #expect(results[1] == "docMid")
+        #expect(results[2] == "docLow")
+        
+        swiftFTS.close()
+    }
+    
+    @Test("Custom Rank Function")
+    func testRegisterRankFunction() async throws {
+        let swiftFTS = try SwiftFTS.makeInMemory()
+        
+        // Custom rank function: returns -priority
+        // Higher priority -> smaller score -> better rank (appears first)
+        let rankBlock: @convention(c) (OpaquePointer?, Int32, UnsafeMutablePointer<OpaquePointer?>?) -> Void = { context, argc, argv in
+            guard let argv else { return }
+            
+            // argv[1] is always priority
+            let priority = sqlite3_value_int(argv[1])
+            // argv[2] is always the fts item type
+            let itemType = sqlite3_value_int(argv[2])
+            
+            // lower score, higher rank, due to default ASC order of sqlite results
+            // We use `-priority` so that higher priority gets lower score (better rank)
+            let score = Double(-priority)
+            
+            sqlite3_result_double(context, score - Double(itemType))
+        }
+        
+        let rankName = "priorityRank"
+        try swiftFTS.registerRankFunction(name: rankName, block: rankBlock)
+        
+        #expect(swiftFTS.databaseQueue.rankFunctionName == rankName)
+        
+        struct PriorityDocument: FullTextSearchable {
+            let id: String
+            let text: String
+            let priority: Int
+            
+            var indexItemID: String { id }
+            var indexText: String { text }
+            var indexPriority: Int { priority }
+            var indexMetadata: TestMetadata? { nil }
+        }
+        
+        // Add items with different priorities, higher closer to top results, due to custom ranking function
+        // Use matching text so both are returned for the query
+        let doc1 = PriorityDocument(id: "docLow", text: "common text one", priority: 10)
+        let doc2 = PriorityDocument(id: "docHigh", text: "common text two", priority: 100)
+        let doc3 = PriorityDocument(id: "docMid", text: "common text three", priority: 50)
+        
+        try await swiftFTS.indexer.addItems([doc1, doc2, doc3])
+        
+        // Search
+        // Since all match "common", the order depends on the rank function
+        // Expected order:
+        // 1. docHigh (priority 100 -> score -100)
+        // 2. docMid (priority 50 -> score -50)
+        // 3. docLow (priority 10 -> score -10)
+        
+        // We use a simple factory just to get IDs
+        let results: [String] = try await swiftFTS.searchEngine.search(query: "common", factory: { $0.id })
+        
+        #expect(results.count == 3)
+        #expect(results[0] == "docHigh")
+        #expect(results[1] == "docMid")
+        #expect(results[2] == "docLow")
+        
+        try swiftFTS.databaseQueue.unregisterRankFunction()
+        
+        #expect(swiftFTS.databaseQueue.rankFunctionName == nil)
+        
+        swiftFTS.close()
     }
 }

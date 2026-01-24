@@ -19,7 +19,7 @@ public final class SearchEngine: @unchecked Sendable {
     /// - Returns: An array of items matching the query.
     public func search<M: Codable & Sendable>(query: String, itemType: FTSItemType? = nil, offset: Int = 0, limit: Int = 100) async throws -> [FTSItem<M>] {
         try await search(query: query, itemType: itemType, offset: offset, limit: limit) { item in
-            FTSItem(id: item.id, text: item.text, itemType: item.type, metadata: try item.metadata())
+            FTSItem(id: item.id, text: item.text, type: item.type, metadata: try item.metadata())
         }
     }
     
@@ -42,20 +42,25 @@ public final class SearchEngine: @unchecked Sendable {
              return []
         }
         
-        let transient = self.SQLITE_TRANSIENT
+        let rankFunctionName = databaseQueue.rankFunctionName
+        let transient = SQLITE_TRANSIENT
         return try await databaseQueue.execute { db in
             var sql = """
             SELECT l.id, l.content, l.type, l.metadata
             FROM fts_lookup l
             JOIN \(FTS5Setup.tableName) f ON l.rowid = f.rowid
-            WHERE \(FTS5Setup.tableName) MATCH ?
+            WHERE f.content MATCH ?
             """
             
             if itemType != nil {
                 sql += " AND l.type = ?"
             }
             
-            sql += " ORDER BY rank LIMIT ? OFFSET ?;"
+            if let rankFunctionName {
+                sql += " ORDER BY \(rankFunctionName)(rank, l.priority, l.type) LIMIT ? OFFSET ?;"
+            } else {
+                sql += " ORDER BY -l.priority, rank LIMIT ? OFFSET ?;"
+            }
             
             var stmt: OpaquePointer?
             if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
