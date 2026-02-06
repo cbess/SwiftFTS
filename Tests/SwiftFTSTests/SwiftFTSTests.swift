@@ -40,17 +40,17 @@ func makeFileDatabaseQueue() throws -> FTSDatabaseQueue {
 @Suite("SwiftFTS Tests", .serialized)
 struct SwiftFTSTests {
     
-    @Test("Simple Indexing")
+    @Test("Simple Indexing - Memory")
     func testSimpleSearch() async throws {
         let dbQueue = try FTSDatabaseQueue.makeInMemory()
         let indexer = try SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)
         
-        let doc = TestDocument(id: "1", text: "Hello, world!", type: 1, metadata: nil)
-        try await indexer.addItems([doc])
+        let item = FTSItem(id: "one", text: "Hello, world!", type: 1, metadata: FTSItemMetadata())
+        try await indexer.addItems([item])
         
         // find it
-        let results: [any FullTextSearchable<TestMetadata?>] = try await engine.search(query: "woRld")
+        let results: [any FullTextSearchable<FTSItemMetadata?>] = try await engine.search(query: "woRld")
         #expect(results.count == 1)
         #expect(results.first?.indexItemType == 1)
         
@@ -74,8 +74,33 @@ struct SwiftFTSTests {
         dbQueue.close()
     }
     
+    @Test("Built-in Types Indexing and Searching - Memory")
+    func testSimpleIndexingAndSearching() async throws {
+        let dbQueue = try FTSDatabaseQueue.makeInMemory()
+        let indexer = try SearchIndexer(databaseQueue: dbQueue)
+        let engine = SearchEngine(databaseQueue: dbQueue)
+        
+        let doc1 = FTSItem(id: "1", text: "Swift is a powerful programming language.", type: FTSItemTypeUnspecified, metadata: FTSItemMetadata(map: ["author": "Apple"], array: ["helpful"]))
+        let doc2 = FTSItem(id: "2", text: "Objective-C was the primary language for iOS.", type: 1, metadata: FTSItemMetadata(map: ["author": "NeXT", "year": "1984"]))
+        
+        try await indexer.addItems([doc1, doc2])
+        
+        // Search for "Swift"
+        let results1: [any FullTextSearchable<FTSItemMetadata>] = try await engine.search(query: "Swift")
+        #expect(results1.count == 1)
+        #expect(results1.first?.indexItemID == "1")
+        #expect(results1.first?.indexMetadata?.map?["author"] == "Apple")
+        #expect(results1.first?.indexMetadata?.array?.first == "helpful")
+        
+        // Search for two different terms using OR (should match 1 and 3)
+        let results2: [any FullTextSearchable<FTSItemMetadata>] = try await engine.search(query: FTSQueryBuilder.orQuery("primary", "swift"))
+        #expect(results2.count == 2)
+        
+        dbQueue.close()
+    }
+    
     @Test("Basic Indexing and Searching - File")
-    func testIndexingAndSearching() async throws {
+    func testBasicIndexingAndSearching() async throws {
         let dbQueue = try makeFileDatabaseQueue()
         let indexer = try SearchIndexer(databaseQueue: dbQueue)
         let engine = SearchEngine(databaseQueue: dbQueue)

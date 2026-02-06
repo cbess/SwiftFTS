@@ -43,6 +43,29 @@ targets: [
 
 ## Quick Start
 
+### Simple
+
+
+```swift
+import SwiftFTS
+
+// create an in-memory database
+let dbQueue = try FTSDatabaseQueue.makeInMemory()
+let indexer = try SearchIndexer(databaseQueue: dbQueue)
+let engine = SearchEngine(databaseQueue: dbQueue)
+
+// using built-in FTSItem and FTSItemMetadata
+let item = FTSItem(id: "one", text: "Hello, world!", type: 1, metadata: FTSItemMetadata())
+try await indexer.addItems([item])
+
+// find it
+let results: [any FullTextSearchable<FTSItemMetadata?>] = try await engine.search(query: "woRld")
+#expect(results.count == 1)
+#expect(results.first?.indexItemType == 1)
+```
+
+### More advanced
+
 ```swift
 import SwiftFTS
 
@@ -56,7 +79,7 @@ let dbQueue = try FTSDatabaseQueue.makeInMemory()
 let indexer = try SearchIndexer(databaseQueue: dbQueue)
 let engine = SearchEngine(databaseQueue: dbQueue)
 
-// Add documents
+// Add documents, using custom types
 struct Article: FullTextSearchable {
     let id: String
     let text: String

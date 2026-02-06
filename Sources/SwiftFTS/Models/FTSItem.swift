@@ -26,3 +26,10 @@ public struct FTSItem<Metadata: Codable & Sendable>: FullTextSearchable {
     }
 }
 
+/// A simple metadata container for use with `FTSItem` or basic usage.
+public struct FTSItemMetadata: Codable, Sendable {
+    /// A string hash map
+    public var map: [String: String]?
+    /// A string array
+    public var array: [String]?
+}
